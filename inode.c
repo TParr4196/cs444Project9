@@ -7,6 +7,8 @@
 
 #define BLOCK_SIZE 4096
 #define INODE_MAP 1
+#define ROOT_INODE_NUM 0
+
 static struct inode incore[MAX_SYS_OPEN_FILES] = {0};
 
 void initialize_inode(struct inode *in){
@@ -151,5 +153,11 @@ void iput(struct inode *in){
     in->ref_count--;
     if(in->ref_count==0){
         write_inode(in);
+    }
+}
+
+struct inode *namei(char *path){
+    if(strcmp(path, "/")){
+        return iget(ROOT_INODE_NUM);
     }
 }
