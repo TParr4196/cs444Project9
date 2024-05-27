@@ -1,0 +1,4 @@
+*.o
+testfs
+libvvsfs.a
+image.txt
