@@ -5,6 +5,7 @@
 #include "pack.h"
 #include "dir.h"
 #include <stdio.h>
+#include <string.h>
 
 #define BLOCK_SIZE 4096
 #define INODE_MAP 1
@@ -160,12 +161,12 @@ void iput(struct inode *in){
 struct inode *namei(char *path){
     char result[INODE_PTR_COUNT];
     get_dirname(path, result);
-    if(strcmp(result, "/")){
+    if(result[0]=='/'){
         struct inode *in = iget(ROOT_INODE_NUM);
-        if(strcmp("/", path)==0){
+        get_basename(path, result);
+        if(strcmp("/", result)==0){
             return in;
         }
-        get_basename(path, result);
         //TODO
     }
     return NULL;

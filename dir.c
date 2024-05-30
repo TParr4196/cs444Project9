@@ -142,7 +142,7 @@ int directory_make(char *path){
 
     char result[BLOCK_POINTER_SIZE];
     get_dirname(path, result);
-    struct directory *dir = directory_open(namei(result)->inode_num);
+    //struct directory *dir = directory_open(namei(result)->inode_num);
     struct inode *in = ialloc();
     int block_index = alloc();
     unsigned char block[BLOCK_SIZE]={0};
