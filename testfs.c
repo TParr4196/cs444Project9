@@ -241,7 +241,12 @@ void test_directory_open_get_close(void){
     incore_free_all();
 }
 
-int main(){
+void test_namei(void){
+    CTEST_ASSERT(namei("gibberishmadeupinode")==NULL, "returns NULL if inode not found");
+    CTEST_ASSERT(namei("/")->inode_num==0, "returns root inode if path is /");
+}
+
+int main(void){
     CTEST_VERBOSE(1);
 
     test_image_open();
@@ -270,6 +275,8 @@ int main(){
 
     test_directory_open_get_close();
 
+    test_namei();
+
     test_image_close(); //must be last
 
     CTEST_RESULTS();
@@ -279,7 +286,7 @@ int main(){
 
 #else
 
-int main(){
+int main(void){
 
     image_open("image.txt",0);
 

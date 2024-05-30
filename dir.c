@@ -17,6 +17,8 @@
 #define INODE_NUM_SIZE 2
 #define RWX 7
 #define DIRECTORY 2
+#define ROOT_INODE_NUM 0
+#define BLOCK_POINTER_SIZE 16
 
 void mkfs(void){
     //initialize basic metadeta
@@ -45,7 +47,7 @@ void mkfs(void){
     in->owner_id=0; //no users yet?
     in->permissions=7; //r 4 w 2 x 1
     in->flags=DIRECTORY; //marks as directory
-    in->link_count=1; //only link to root directory is itself
+    in->link_count=1; //only link to root directory is itself[7]
     in->block_ptr[0]=*block;
 
     //create directory entries for . and ..
@@ -91,6 +93,76 @@ int directory_get(struct directory *dir, struct directory_entry *ent){
 void directory_close(struct directory *d){
     iput(d->inode);
     free(d);
+}
+
+//provided by Beej to get directory name from a string
+char *get_dirname(const char *path, char *dirname){
+    strcpy(dirname, path);
+
+    char *p = strrchr(dirname, '/');
+
+    if (p == NULL) {
+        strcpy(dirname, ".");
+        return dirname;
+    }
+
+    if (p == dirname)  // Last slash is the root /
+        *(p+1) = '\0';
+
+    else
+        *p = '\0';  // Last slash is not the root /
+
+    return dirname;
+}
+
+//provided by Beej to get name of last part of path
+char *get_basename(const char *path, char *basename){
+    if (strcmp(path, "/") == 0) {
+        strcpy(basename, path);
+        return basename;
+    }
+
+    const char *p = strrchr(path, '/');
+
+    if (p == NULL)
+        p = path;   // No slash in name, start at beginning
+    else
+        p++;        // Start just after slash
+
+    strcpy(basename, p);
+
+    return basename;
+}
+
+int directory_make(char *path){
+    //later case
+    if(path[0]!='/'){
+        return -1;
+    }
+
+    char result[BLOCK_POINTER_SIZE];
+    get_dirname(path, result);
+    struct directory *dir = directory_open(namei(result)->inode_num);
+    struct inode *in = ialloc();
+    int block_index = alloc();
+    unsigned char block[BLOCK_SIZE]={0};
+    //initialize inode data
+    in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
+    in->owner_id=0; //no users yet?
+    in->permissions=7; //r 4 w 2 x 1
+    in->flags=DIRECTORY; //marks as directory
+    in->link_count=1; //only link to root directory is itself
+    in->block_ptr[0]=*block;
+
+    //create directory entries for . and ..
+    write_u16(block, in->inode_num);
+    strcpy((char*)block+INODE_NUM_SIZE, ".");
+    write_u16(block+DIRECTORY_SIZE, in->inode_num);
+    strcpy((char*)(block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+    bwrite(block_index, block);
+    iput(in);
+    
+    return -1;
 }
 
 void ls(void){

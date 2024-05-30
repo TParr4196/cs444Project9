@@ -3,6 +3,7 @@
 #include "block.h"
 #include "free.h"
 #include "pack.h"
+#include "dir.h"
 #include <stdio.h>
 
 #define BLOCK_SIZE 4096
@@ -157,7 +158,15 @@ void iput(struct inode *in){
 }
 
 struct inode *namei(char *path){
-    if(strcmp(path, "/")){
-        return iget(ROOT_INODE_NUM);
+    char result[INODE_PTR_COUNT];
+    get_dirname(path, result);
+    if(strcmp(result, "/")){
+        struct inode *in = iget(ROOT_INODE_NUM);
+        if(strcmp("/", path)==0){
+            return in;
+        }
+        get_basename(path, result);
+        //TODO
     }
+    return NULL;
 }
