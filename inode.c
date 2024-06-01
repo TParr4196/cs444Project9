@@ -159,15 +159,26 @@ void iput(struct inode *in){
 }
 
 struct inode *namei(char *path){
+    //check if root directory or current directory
+    if(strcmp("/", path)==0){
+        struct inode *in = iget(ROOT_INODE_NUM);
+        return in;
+    }
     char result[INODE_PTR_COUNT];
     get_dirname(path, result);
     if(result[0]=='/'){
+        //get root directory and return it if that is path
         struct inode *in = iget(ROOT_INODE_NUM);
+        (void)in; //TODO
+
+        //TODO loop from root directory to parent directory of path
+
+        //get final inode name and return
         get_basename(path, result);
-        if(strcmp("/", result)==0){
-            return in;
-        }
-        //TODO
+        //TODO 
     }
+
+    //TODO else loop from current directory
+
     return NULL;
 }

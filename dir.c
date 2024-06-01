@@ -19,6 +19,8 @@
 #define DIRECTORY 2
 #define ROOT_INODE_NUM 0
 #define BLOCK_POINTER_SIZE 16
+#define OWNER_ID_NUM 0
+#define DEFAULT_LINKS 1
 
 void mkfs(void){
     //initialize basic metadeta
@@ -44,10 +46,10 @@ void mkfs(void){
 
     //initialize inode data
     in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
-    in->owner_id=0; //no users yet?
-    in->permissions=7; //r 4 w 2 x 1
+    in->owner_id=OWNER_ID_NUM; //no users yet?
+    in->permissions=RWX; //r 4 w 2 x 1
     in->flags=DIRECTORY; //marks as directory
-    in->link_count=1; //only link to root directory is itself[7]
+    in->link_count=DEFAULT_LINKS; //only link to root directory is itself
     in->block_ptr[0]=*block;
 
     //create directory entries for . and ..
@@ -140,29 +142,42 @@ int directory_make(char *path){
         return -1;
     }
 
-    char result[BLOCK_POINTER_SIZE];
-    get_dirname(path, result);
-    //struct directory *dir = directory_open(namei(result)->inode_num);
+    //get parent directory's inode
+    struct inode *parent_in = namei(get_dirname(path));
+
+    //allocate new block and inode
     struct inode *in = ialloc();
     int block_index = alloc();
-    unsigned char block[BLOCK_SIZE]={0};
+
+    //return -1 if any of the above functions fail
+    if(parent_in==NULL || in == NULL || block_index == -1)
+        return -1;
+
     //initialize inode data
     in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
-    in->owner_id=0; //no users yet?
-    in->permissions=7; //r 4 w 2 x 1
+    in->owner_id=OWNER_ID_NUM; //no users yet?
+    in->permissions=RWX; //r 4 w 2 x 1
     in->flags=DIRECTORY; //marks as directory
-    in->link_count=1; //only link to root directory is itself
+    in->link_count=DEFAULT_LINKS; //only link to root directory is itself
+    unsigned char block[BLOCK_SIZE]={0};
     in->block_ptr[0]=*block;
 
-    //create directory entries for . and ..
+    //create directory entries for . and .. and write new directory out to disk
     write_u16(block, in->inode_num);
     strcpy((char*)block+INODE_NUM_SIZE, ".");
-    write_u16(block+DIRECTORY_SIZE, in->inode_num);
+    write_u16(block+DIRECTORY_SIZE, parent_in->inode_num);
     strcpy((char*)(block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
     bwrite(block_index, block);
+
+    //update parent inode
+    parent_in->size+=DIRECTORY_SIZE;
+    parent_in->link_count+=1;
+
+
     iput(in);
+    iput(parent_in);
     
-    return -1;
+    return 0;
 }
 
 void ls(void){
