@@ -200,15 +200,9 @@ void test_iput(void){
 
 int check_root_directory_inode(struct inode *in){
     int chk=1;
-    if(in->size != 64 || in->owner_id != 0 || in->permissions != 7 || in->flags != 2|| in->link_count!=1)
+    if(in->size != 64 || in->owner_id != 0 || in->permissions != 7 || in->flags != 2 || in->link_count != 1)
         chk = 0;
-    if(read_u16(in->block_ptr)!=(unsigned int)in->inode_num ||
-        read_u16(in->block_ptr+32)!=(unsigned int)in->inode_num){
-        chk=0;
-    }
-    char file_name=(char)read_u8(in->block_ptr+INODE_NUM_SIZE);
-    char file_name_2=(char)read_u8(in->block_ptr+2+INODE_NUM_SIZE);
-    if(!strcmp(".", &file_name) || !strcmp("..", &file_name_2) ){
+    if(in->block_ptr[0]!=7){
         chk=0;
     }
     return chk;
@@ -216,8 +210,11 @@ int check_root_directory_inode(struct inode *in){
 
 void test_mkfs(void){
     mkfs();
-    ls();
-    CTEST_ASSERT(alloc()==4, "block map initialized correctly");
+    CTEST_ASSERT(alloc()==8, "block map initialized correctly");
+    unsigned char block[BLOCK_SIZE];
+    bread(BLOCK_MAP, block);
+    set_free(block, 8, 0);
+    bwrite(BLOCK_MAP, block);
     struct inode *in= iget(0);
     CTEST_ASSERT(check_root_directory_inode(in), "inode 0 allocated to correctly represent parent directory");
     iput(in);
@@ -230,20 +227,36 @@ void test_directory_open_get_close(void){
     CTEST_ASSERT(dir->offset==0, "directory_open sets offset to 0");
     struct directory_entry *ent=(struct directory_entry*)malloc(sizeof(struct directory_entry));
     CTEST_ASSERT(directory_get(dir, ent)==0, "directory_get returns 0 on success");
-    CTEST_ASSERT(ent->inode_num==0&&strcmp(".", ent->name), "dictionary_get gets . directory from root directory");
+    CTEST_ASSERT(ent->inode_num==0&&strcmp(".", ent->name)==0, "dictionary_get gets . directory from root directory");
     directory_get(dir, ent);
-    CTEST_ASSERT(ent->inode_num==0&&strcmp("..", ent->name), "dictionary_get gets .. directory from root directory as second entry");
+    CTEST_ASSERT(ent->inode_num==0&&strcmp("..", ent->name)==0, "dictionary_get gets .. directory from root directory as second entry");
     CTEST_ASSERT(directory_get(dir, ent)==-1, "directory_get returns -1 after directory fully traversed");
     directory_close(dir);
-    CTEST_ASSERT(check_root_directory_inode(iget(0)), "directory_close marks directory inode as free");
+    struct inode *in = iget(0);
+    CTEST_ASSERT(check_root_directory_inode(in), "directory_close marks directory inode as free");
+    iput(in);
     incore_all_used();
     CTEST_ASSERT(directory_open(0)==NULL, "directory_open returns NULL if iget fails");
     incore_free_all();
+    free(ent);
 }
 
 void test_namei(void){
     CTEST_ASSERT(namei("gibberishmadeupinode")==NULL, "returns NULL if inode not found");
-    CTEST_ASSERT(namei("/")->inode_num==0, "returns root inode if path is /");
+    struct inode *in = namei("/");
+    CTEST_ASSERT(check_root_directory_inode(in), "returns root inode if path is /");
+    iput(in);
+}
+
+void test_directory_make(void){
+    directory_make("/plswork");
+    struct directory *dir = directory_open(0);
+    struct directory_entry *ent=(struct directory_entry*)malloc(sizeof(struct directory_entry));
+    directory_get(dir, ent);
+    directory_get(dir, ent);
+    CTEST_ASSERT(directory_get(dir, ent)==0, "root directory has third entry");
+    CTEST_ASSERT(ent->inode_num==1&&strcmp("plswork", ent->name)==0, "3rd entry points to directory_make directory");
+    free(ent);
 }
 
 int main(void){
@@ -276,6 +289,8 @@ int main(void){
     test_directory_open_get_close();
 
     test_namei();
+
+    test_directory_make();
 
     test_image_close(); //must be last
 

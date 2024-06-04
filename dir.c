@@ -21,6 +21,7 @@
 #define BLOCK_POINTER_SIZE 16
 #define OWNER_ID_NUM 0
 #define DEFAULT_LINKS 1
+#define FILE_DATA_BLOCK_0 7
 
 void mkfs(void){
     //initialize basic metadeta
@@ -28,11 +29,11 @@ void mkfs(void){
     for(int i=0; i<BLOCK_SIZE; i++){
         block[i]=0x0;
     }
-    for(int i=0; i<3; i++){
+    for(int i=0; i<FILE_DATA_BLOCK_0; i++){
         set_free(block, i, 1);
     }
-    bwrite(BLOCK_MAP,block);
-    for(int i=0; i<31; i++){
+    bwrite(BLOCK_MAP, block);
+    for(int i=0; i<FILE_DATA_BLOCK_0; i++){
         set_free(block, i, 0);
     }
 
@@ -40,24 +41,30 @@ void mkfs(void){
     bwrite(SUPERBLOCK, block); 
     bwrite(INODE_MAP, block);
 
+    //grab inode and block for that inode
     struct inode *in = ialloc();
     int block_index = alloc();
     bread(block_index, block);
 
     //initialize inode data
-    in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
-    in->owner_id=OWNER_ID_NUM; //no users yet?
-    in->permissions=RWX; //r 4 w 2 x 1
-    in->flags=DIRECTORY; //marks as directory
-    in->link_count=DEFAULT_LINKS; //only link to root directory is itself
-    in->block_ptr[0]=*block;
+    in->size = 2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
+    in->owner_id = OWNER_ID_NUM; //no users yet?
+    in->permissions = RWX; //r 4 w 2 x 1
+    in->flags = DIRECTORY; //marks as directory
+    in->link_count = DEFAULT_LINKS; //only link to root directory is itself
+    in->block_ptr[0] = block_index;
 
     //create directory entries for . and ..
     write_u16(block, in->inode_num);
-    strcpy((char*)block+INODE_NUM_SIZE, ".");
     write_u16(block+DIRECTORY_SIZE, in->inode_num);
-    strcpy((char*)(block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+
+    strcpy((char*) (block+INODE_NUM_SIZE), ".");
+    strcpy((char*) (block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+
+    //write data out to disk
     bwrite(block_index, block);
+
+    //mark inode as free
     iput(in);
 }
 
@@ -76,7 +83,7 @@ struct directory *directory_open(int inode_num){
 
 int directory_get(struct directory *dir, struct directory_entry *ent){
     //return -1 if the directory has been fully read
-    if(dir->offset>=dir->inode->size){
+    if(dir->offset >= dir->inode->size){
         return -1;
     }
 
@@ -84,10 +91,12 @@ int directory_get(struct directory *dir, struct directory_entry *ent){
     int data_block_index = dir->offset / BLOCK_SIZE;
     int data_block_num = dir->inode->block_ptr[data_block_index];
     unsigned char block[BLOCK_SIZE]={0};
-    bread(data_block_num+INODE_DATA_BLOCK_0, block);
-    int offset_in_block = dir->offset %BLOCK_SIZE;
-    ent->inode_num=read_u16(block+offset_in_block);
-    strcpy((char *)block+offset_in_block+INODE_NUM_SIZE, ent->name);
+    bread(data_block_num, block);
+    int offset_in_block = dir->offset % BLOCK_SIZE;
+
+    //get directory entry out of block
+    ent->inode_num = read_u16(block + offset_in_block);
+    strcpy(ent->name, (char*)(block + offset_in_block + INODE_NUM_SIZE));
     dir->offset+=DIRECTORY_SIZE;
     return 0;
 }
@@ -138,12 +147,12 @@ char *get_basename(const char *path, char *basename){
 
 int directory_make(char *path){
     //later case
-    if(path[0]!='/'){
+    if(path[0]!='/')
         return -1;
-    }
-
     //get parent directory's inode
-    struct inode *parent_in = namei(get_dirname(path));
+    char buffer[16];
+    get_dirname(path, buffer);
+    struct inode *parent_in = namei(buffer);
 
     //allocate new block and inode
     struct inode *in = ialloc();
@@ -153,27 +162,39 @@ int directory_make(char *path){
     if(parent_in==NULL || in == NULL || block_index == -1)
         return -1;
 
-    //initialize inode data
-    in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory, which for root directory is itself again
-    in->owner_id=OWNER_ID_NUM; //no users yet?
-    in->permissions=RWX; //r 4 w 2 x 1
-    in->flags=DIRECTORY; //marks as directory
-    in->link_count=DEFAULT_LINKS; //only link to root directory is itself
+    //intialize block_ptr by creating directory entries for . and ..
     unsigned char block[BLOCK_SIZE]={0};
-    in->block_ptr[0]=*block;
-
-    //create directory entries for . and .. and write new directory out to disk
     write_u16(block, in->inode_num);
     strcpy((char*)block+INODE_NUM_SIZE, ".");
     write_u16(block+DIRECTORY_SIZE, parent_in->inode_num);
     strcpy((char*)(block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+
+    //initialize inode data
+    in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory
+    in->owner_id=OWNER_ID_NUM; //no users yet?
+    in->permissions=RWX; //r 4 w 2 x 1
+    in->flags=DIRECTORY; //marks as directory
+    in->link_count=DEFAULT_LINKS; //only link to directory is parent directory
+    in->block_ptr[0]=*block;
+
+    //write new directory block out to disk
     bwrite(block_index, block);
+
+    //get parent directory's block information TODO double check
+    int parent_block_index = parent_in->block_ptr[0];
+    bread(parent_block_index, block);
+
+    //write new entry into parent directory
+    write_u16(block + parent_in->size, in->inode_num);
+    get_basename(path, buffer);
+    strcpy((char*)(block + parent_in->size + INODE_NUM_SIZE), buffer);
+    bwrite(parent_block_index, block);
 
     //update parent inode
     parent_in->size+=DIRECTORY_SIZE;
     parent_in->link_count+=1;
 
-
+    //free in and parent_in
     iput(in);
     iput(parent_in);
     
