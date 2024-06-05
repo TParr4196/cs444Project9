@@ -45,5 +45,6 @@ It is partitioned into blocks of size 4096 bytes. These bytes are represented by
     `directory_open`: open the directory located at the given inode num
     `directory_get`: get the next entry in the directory
     `directory_close`: mark inode as free and free memory for directory
+    `directory_make`: make a new directory
 
 ## Notes

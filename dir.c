@@ -22,6 +22,8 @@
 #define OWNER_ID_NUM 0
 #define DEFAULT_LINKS 1
 #define FILE_DATA_BLOCK_0 7
+#define PARENT_ENTRY 1
+#define CURRENT_DIRECTORY_ENTRY 0
 
 void mkfs(void){
     //initialize basic metadeta
@@ -52,14 +54,15 @@ void mkfs(void){
     in->permissions = RWX; //r 4 w 2 x 1
     in->flags = DIRECTORY; //marks as directory
     in->link_count = DEFAULT_LINKS; //only link to root directory is itself
-    in->block_ptr[0] = block_index;
+    in->block_ptr[CURRENT_DIRECTORY_ENTRY] = block_index;
+    in->block_ptr[PARENT_ENTRY] = block_index;
 
     //create directory entries for . and ..
     write_u16(block, in->inode_num);
     write_u16(block+DIRECTORY_SIZE, in->inode_num);
 
-    strcpy((char*) (block+INODE_NUM_SIZE), ".");
-    strcpy((char*) (block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+    strcpy((char*)block+INODE_NUM_SIZE, ".");
+    strcpy((char*)block+DIRECTORY_SIZE+INODE_NUM_SIZE, "..");
 
     //write data out to disk
     bwrite(block_index, block);
@@ -149,6 +152,7 @@ int directory_make(char *path){
     //later case
     if(path[0]!='/')
         return -1;
+
     //get parent directory's inode
     char buffer[16];
     get_dirname(path, buffer);
@@ -162,12 +166,12 @@ int directory_make(char *path){
     if(parent_in==NULL || in == NULL || block_index == -1)
         return -1;
 
-    //intialize block_ptr by creating directory entries for . and ..
+    //intialize block by creating directory entries for . and ..
     unsigned char block[BLOCK_SIZE]={0};
     write_u16(block, in->inode_num);
     strcpy((char*)block+INODE_NUM_SIZE, ".");
     write_u16(block+DIRECTORY_SIZE, parent_in->inode_num);
-    strcpy((char*)(block+DIRECTORY_SIZE+INODE_NUM_SIZE), "..");
+    strcpy((char*)block+DIRECTORY_SIZE+INODE_NUM_SIZE, "..");
 
     //initialize inode data
     in->size=2*DIRECTORY_SIZE; //directory contains itself and parent directory
@@ -175,22 +179,24 @@ int directory_make(char *path){
     in->permissions=RWX; //r 4 w 2 x 1
     in->flags=DIRECTORY; //marks as directory
     in->link_count=DEFAULT_LINKS; //only link to directory is parent directory
-    in->block_ptr[0]=*block;
+    in->block_ptr[CURRENT_DIRECTORY_ENTRY] = block_index;
+    in->block_ptr[PARENT_ENTRY] = parent_in->block_ptr[CURRENT_DIRECTORY_ENTRY];
 
     //write new directory block out to disk
     bwrite(block_index, block);
 
-    //get parent directory's block information TODO double check
-    int parent_block_index = parent_in->block_ptr[0];
+    //get parent directory's block
+    int parent_block_index = parent_in->block_ptr[CURRENT_DIRECTORY_ENTRY];
     bread(parent_block_index, block);
 
     //write new entry into parent directory
     write_u16(block + parent_in->size, in->inode_num);
     get_basename(path, buffer);
-    strcpy((char*)(block + parent_in->size + INODE_NUM_SIZE), buffer);
+    strcpy((char*)block + parent_in->size + INODE_NUM_SIZE, buffer);
     bwrite(parent_block_index, block);
 
     //update parent inode
+    parent_in->block_ptr[(parent_in->size)/DIRECTORY_SIZE]=block_index;
     parent_in->size+=DIRECTORY_SIZE;
     parent_in->link_count+=1;
 

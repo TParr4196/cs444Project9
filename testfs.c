@@ -202,9 +202,8 @@ int check_root_directory_inode(struct inode *in){
     int chk=1;
     if(in->size != 64 || in->owner_id != 0 || in->permissions != 7 || in->flags != 2 || in->link_count != 1)
         chk = 0;
-    if(in->block_ptr[0]!=7){
+    if(in->block_ptr[0]!=7 || in->block_ptr[1]!=7)
         chk=0;
-    }
     return chk;
 }
 
@@ -248,15 +247,42 @@ void test_namei(void){
     iput(in);
 }
 
+int check_updated_root_directory_inode(struct inode *in){
+    int chk=1;
+    if(in->size != 32*4 || in->owner_id != 0 || in->permissions != 7 || in->flags != 2 || in->link_count != 3)
+        chk = 0;
+    if(in->block_ptr[0]!=7 || in->block_ptr[1]!=7 || in->block_ptr[2]!=8)
+        chk=0;
+    return chk;
+}
+
+int check_new_directory_inode(struct inode *in){
+    int chk=1;
+    if(in->size != 32*2 || in->owner_id != 0  || in->permissions != 7 || in->flags != 2 ||  in->link_count != 1)
+        chk = 0;
+    if(in->block_ptr[0]!=9 || in->block_ptr[1]!=7)
+        chk=0;
+    return chk;
+}
+
 void test_directory_make(void){
     directory_make("/plswork");
+    directory_make("/limittesting");
     struct directory *dir = directory_open(0);
     struct directory_entry *ent=(struct directory_entry*)malloc(sizeof(struct directory_entry));
     directory_get(dir, ent);
+    CTEST_ASSERT(check_updated_root_directory_inode(dir->inode), "parent inode updated correctly");
     directory_get(dir, ent);
+    CTEST_ASSERT(check_updated_root_directory_inode(dir->inode), "parent inode not overwritten");
     CTEST_ASSERT(directory_get(dir, ent)==0, "root directory has third entry");
     CTEST_ASSERT(ent->inode_num==1&&strcmp("plswork", ent->name)==0, "3rd entry points to directory_make directory");
+    CTEST_ASSERT(directory_get(dir, ent)==0, "root directory has fourth entry");
+    CTEST_ASSERT(ent->inode_num==2&&strcmp("limittesting", ent->name)==0, "4th entry points to directory_make directory");
+    directory_close(dir);
     free(ent);
+    struct inode *in = iget(2);
+    CTEST_ASSERT(check_new_directory_inode(in), "new inode instantiated with correct metadata");
+    iput(in);
 }
 
 int main(void){
